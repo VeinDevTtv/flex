@@ -8,6 +8,7 @@ export async function execute(interaction) {
   if (!interaction.isChatInputCommand()) return;
 
   console.log(`[SlashCommand] ${interaction.commandName} used by ${interaction.user.tag}`);
+  console.log('Command options:', interaction.options.data);
 
   const command = interaction.client.commands.get(interaction.commandName);
 
@@ -26,6 +27,7 @@ export async function execute(interaction) {
   );
 
   if (cooldown.onCooldown) {
+    console.log(`[Cooldown] User ${interaction.user.tag} is on cooldown for ${interaction.commandName}`);
     await interaction.reply({ 
       content: cooldown.message,
       ephemeral: true 
@@ -34,9 +36,11 @@ export async function execute(interaction) {
   }
 
   try {
+    console.log(`[Executing] ${interaction.commandName} for ${interaction.user.tag}`);
     await command.execute(interaction);
+    console.log(`[Success] ${interaction.commandName} executed successfully`);
   } catch (error) {
-    console.error(error);
+    console.error(`[Error] Error executing ${interaction.commandName}:`, error);
     
     // If the interaction was already replied to, follow up with an error message
     if (interaction.replied || interaction.deferred) {
