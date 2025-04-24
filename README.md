@@ -1,20 +1,60 @@
 # Discord.js Slash Command Bot
 
-A modern Discord bot using Discord.js v14+ with slash commands for utility and entertainment.
+A modern, interactive Discord bot using Discord.js v14+ with slash commands that combine utility and entertainment features. This bot supports Discord's Application Command system (qualifying for the Active Developer Badge) and is designed to be modular and scalable for easy expansion.
 
-## Features
+## ⚙️ Features
 
 ### Utility Commands
-- **`/remindme`** - Set a reminder that DMs you after a specified time
-- **`/poll`** - Create multiple-choice polls with automatic reactions
-- **`/quote`** - Save and retrieve memorable quotes from your server
+
+#### `/remindme` - Personal Reminder System
+- Set timed reminders that DM you after a specified interval
+- Supports multiple time units: seconds (s), minutes (m), hours (h), days (d)
+- Example: `/remindme time:10m message:"finish homework"`
+- Replies with the exact time the reminder will trigger
+
+#### `/poll` - Interactive Voting
+- Create multiple-choice polls with automatic emoji reactions
+- Support for up to 9 options
+- Auto-reacts with number emojis (1️⃣, 2️⃣, etc.)
+- Shows who created the poll and when
+- Example: `/poll question:"Best pizza topping?" option1:"Pepperoni" option2:"Mushrooms" option3:"Pineapple"`
+
+#### `/quote` - Server Quote Manager
+Three subcommands for managing memorable quotes:
+- `/quote save` - Save a new quote with author attribution and timestamp
+- `/quote random` - Display a random quote from the server's collection
+- `/quote list` - Show all quotes saved in the server
+- Quotes are persistently stored between bot restarts
+
+#### `/help` - Command Directory
+- Displays all available commands with descriptions and examples
+- Organized by category (utility and fun)
+- Shows as an ephemeral message visible only to the command user
 
 ### Fun Commands
-- **`/vibecheck`** - Get a randomized vibe score with a comment and GIF
-- **`/aestheticname`** - Convert text to aesthetic unicode styles
-- **`/emojiart`** - Convert text to emoji letter blocks
 
-## Setup Instructions
+#### `/vibecheck` - Randomized Mood Rating
+- Generates a random "vibe score" from 0-100%
+- Provides a custom message based on your score range
+- Includes a thematic GIF that matches your current vibe level
+- Different color themes for each vibe range
+
+#### `/aestheticname` - Text Styling
+- Transforms regular text into aesthetic unicode styles
+- Two style options:
+  - Fullwidth (ｆｕｌｌｗｉｄｔｈ) - Classic vaporwave style
+  - Fancy (ƒαηcу) - Stylized unicode characters
+- Example: `/aestheticname input:"hello world" style:Fullwidth`
+
+#### `/emojiart` - Emoji Letter Blocks
+- Converts text into emoji letter blocks (A-Z)
+- Two style options:
+  - Square emoji style (🅰 🅱 🅲...)
+  - Circle emoji style (🅐 🅑 🅒...)
+- Length limit to prevent spam
+- Example: `/emojiart input:"DISCORD" style:Square`
+
+## 🚀 Setup Instructions
 
 ### Prerequisites
 - Node.js 16.9.0 or higher
@@ -25,7 +65,7 @@ A modern Discord bot using Discord.js v14+ with slash commands for utility and e
 
 1. Clone this repository
 ```bash
-git clone https://github.com/VeinDevTtv/discord-bot.git
+git clone https://github.com/yourusername/discord-bot.git
 cd discord-bot
 ```
 
@@ -51,23 +91,32 @@ npm run deploy
 npm start
 ```
 
-## Development
+## 🔧 Development
 
 ### Project Structure
 ```
 discord-bot/
 ├── src/
 │   ├── commands/
-│   │   ├── fun/
-│   │   └── utility/
-│   ├── events/
-│   ├── utils/
-│   ├── deploy-commands.js
-│   └── index.js
-├── .env
-├── package.json
-└── README.md
+│   │   ├── fun/          # Entertainment commands
+│   │   └── utility/      # Utility tools 
+│   ├── events/           # Discord.js event handlers
+│   ├── utils/            # Helper functions and utilities
+│   ├── deploy-commands.js # Command registration script
+│   └── index.js          # Main bot file
+├── data/                 # Persistent data storage (quotes)
+├── .env                  # Environment variables (not in repo)
+├── package.json          # Dependencies and scripts
+└── README.md             # Documentation
 ```
+
+### Technical Details
+- Built with Discord.js v14+ using Application Commands
+- Uses ES Modules for better code organization
+- In-memory reminder system with time formatting
+- Persistent JSON-based storage for quotes
+- Unicode text transformation utilities
+- Modular command structure for easy expansion
 
 ### Adding New Commands
 
@@ -76,10 +125,14 @@ discord-bot/
 3. Export both the `data` and `execute` function
 4. Run `npm run deploy` to register the new command
 
-## Contributing
+## 🤝 Contributing
 
-Feel free to fork this project and submit pull requests with new features or improvements!
+Feel free to fork this project and submit pull requests with new features or improvements! Some ideas for expansion:
+- Add music playback features
+- Create moderation commands
+- Implement a leveling system
+- Add game integrations
 
-## License
+## 📝 License
 
 MIT License 
