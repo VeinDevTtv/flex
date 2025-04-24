@@ -70,28 +70,56 @@ export async function execute(interaction) {
       return interaction.editReply('❌ Video is too long! Please choose a video under 1 hour.');
     }
 
-    // Prepare audio stream
+    // Update the user about progress
+    await interaction.editReply('🔄 Preparing the audio stream, please wait...');
+
+    // Prepare audio stream with multiple fallbacks
     let stream;
     try {
+      // First attempt: Standard stream with compatibility mode
       stream = await play.stream(url, { 
         quality: 2,
-        discordPlayerCompatibility: true // Add compatibility mode for Discord player
+        discordPlayerCompatibility: true
       });
-    } catch (error) {
-      console.error('Stream error with discordPlayerCompatibility:', error);
-      // Fallback to basic stream without compatibility mode
+    } catch (streamError) {
+      console.error('Primary stream error:', streamError);
+      
+      // Check if it's a connection reset error
+      if (streamError.code === 'ECONNRESET') {
+        await interaction.editReply('🔄 Connection issue detected, trying alternative method...');
+        
+        // Wait a moment before retry
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      
       try {
-        stream = await play.stream(url);
-        console.log('Using fallback streaming method');
-      } catch (fallbackError) {
-        console.error('Fallback stream error:', fallbackError);
-        throw new Error('Failed to create audio stream. The video might be unavailable or restricted.');
+        // Second attempt: Lower quality without compatibility mode
+        stream = await play.stream(url, { 
+          quality: 0, // Lowest quality
+          discordPlayerCompatibility: false
+        });
+        console.log('Using lower quality streaming method');
+      } catch (secondError) {
+        console.error('Secondary stream error:', secondError);
+        
+        try {
+          // Third attempt: Bare minimum options
+          await interaction.editReply('🔄 Trying final fallback method...');
+          stream = await play.stream(url, { htmldata: false });
+          console.log('Using minimal streaming method');
+        } catch (finalError) {
+          console.error('All stream attempts failed:', finalError);
+          throw new Error('Failed to create audio stream after multiple attempts. The video might be restricted or there are network issues.');
+        }
       }
     }
     
     if (!stream || !stream.stream) {
       throw new Error('Failed to get audio stream from the video');
     }
+    
+    // Update the user
+    await interaction.editReply('🔄 Stream ready, connecting to voice channel...');
     
     let resource;
     try {
@@ -113,18 +141,23 @@ export async function execute(interaction) {
       selfDeaf: true
     });
 
+    // Update the user
+    await interaction.editReply('🔄 Joining voice channel...');
+
     // Monitor connection state
     connection.on(VoiceConnectionStatus.Disconnected, async () => {
       try {
+        console.log('Voice connection disconnected, attempting to reconnect...');
         await Promise.race([
           entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
           entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
         ]);
-        // Seems to be reconnecting to a new channel
+        console.log('Voice connection is reconnecting...');
       } catch (error) {
-        // Seems to be a real disconnection
+        console.log('Voice connection cannot reconnect, cleaning up...', error);
         connection.destroy();
         connections.delete(interaction.guildId);
+        interaction.channel?.send('❌ Voice connection was lost and could not be reestablished.').catch(() => {});
       }
     });
 
@@ -137,6 +170,7 @@ export async function execute(interaction) {
       console.error(`Voice connection error in guild ${interaction.guildId}:`, error);
       connection.destroy();
       connections.delete(interaction.guildId);
+      interaction.channel?.send(`❌ Voice connection error: ${error.message}`).catch(() => {});
     });
 
     // Create and configure audio player
@@ -145,6 +179,9 @@ export async function execute(interaction) {
         noSubscriber: NoSubscriberBehavior.Pause,
       },
     });
+
+    // Update the user
+    await interaction.editReply('🔄 Preparing playback...');
 
     // Await ready state with timeout
     try {
@@ -163,15 +200,25 @@ export async function execute(interaction) {
 
     // Cleanup when finished or on error
     player.on(AudioPlayerStatus.Idle, () => {
-      connection.destroy();
-      connections.delete(interaction.guildId);
+      console.log(`Song finished in guild ${interaction.guildId}, cleaning up...`);
+      try {
+        connection.destroy();
+        connections.delete(interaction.guildId);
+        interaction.channel?.send('✅ Song playback completed.').catch(() => {});
+      } catch (error) {
+        console.error('Error during cleanup:', error);
+      }
     });
 
     player.on('error', error => {
       console.error('Audio player error:', error);
-      connection.destroy();
-      connections.delete(interaction.guildId);
-      interaction.channel?.send(`❌ An error occurred while playing: ${error.message}`).catch(() => {});
+      try {
+        connection.destroy();
+        connections.delete(interaction.guildId);
+        interaction.channel?.send(`❌ An error occurred while playing: ${error.message}`).catch(() => {});
+      } catch (cleanupError) {
+        console.error('Error during player cleanup:', cleanupError);
+      }
     });
 
     // Build now-playing embed
@@ -189,6 +236,9 @@ export async function execute(interaction) {
 
     // Send public embed
     await interaction.editReply({ embeds: [embed], ephemeral: false });
+
+    // Log success
+    console.log(`Now playing song in guild ${interaction.guildId}: ${details.title}`);
 
   } catch (error) {
     console.error('Error in /song command:', error);
