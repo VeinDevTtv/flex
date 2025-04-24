@@ -34,8 +34,16 @@ export async function execute(interaction) {
   // Permission checks
   const botMember = interaction.guild.members.me;
   const permissions = botMember.permissionsIn(userChannel);
-  if (!permissions.has(['CONNECT', 'SPEAK'])) {
-    return interaction.editReply('❌ I need permissions to connect and speak in your channel.');
+  
+  // Check for basic permissions first
+  if (!permissions.has(['ViewChannel', 'Connect', 'Speak'])) {
+    let missingPerms = [];
+    if (!permissions.has('ViewChannel')) missingPerms.push('View Channel');
+    if (!permissions.has('Connect')) missingPerms.push('Connect');
+    if (!permissions.has('Speak')) missingPerms.push('Speak');
+    
+    return interaction.editReply(`❌ I need the following permissions in the voice channel: ${missingPerms.join(', ')}.
+Try using the /checkvoice command for more detailed permission information.`);
   }
 
   // Prevent multiple connections in the same guild
@@ -119,8 +127,9 @@ export async function execute(interaction) {
     }
     
     // Update the user
-    await interaction.editReply('🔄 Stream ready, connecting to voice channel...');
+    await interaction.editReply('🔄 Creating audio resource...');
     
+    // Create audio resource
     let resource;
     try {
       resource = createAudioResource(stream.stream, {
@@ -132,19 +141,43 @@ export async function execute(interaction) {
       console.error('Error creating audio resource:', error);
       throw new Error('Failed to process audio stream. Please try another video.');
     }
-
-    // Establish voice connection
+    
+    await interaction.editReply('🔄 Joining voice channel...');
+    
+    // Create voice connection with a manual timeout
     const connection = joinVoiceChannel({
       channelId: userChannel.id,
       guildId: interaction.guildId,
       adapterCreator: interaction.guild.voiceAdapterCreator,
       selfDeaf: true
     });
-
-    // Update the user
-    await interaction.editReply('🔄 Joining voice channel...');
-
-    // Monitor connection state
+    
+    // Set a manual connection timeout
+    let connectionTimeout = setTimeout(() => {
+      console.error('Voice connection manual timeout');
+      connection.destroy();
+      throw new Error('Voice connection timed out after 15 seconds. Server might be having issues.');
+    }, 15000);
+    
+    // Create audio player
+    const player = createAudioPlayer({
+      behaviors: {
+        noSubscriber: NoSubscriberBehavior.Pause,
+      }
+    });
+    
+    // Set up connection state monitoring
+    connection.on(VoiceConnectionStatus.Ready, () => {
+      console.log(`Voice connection ready in guild ${interaction.guildId}`);
+      clearTimeout(connectionTimeout);
+      
+      // Play the audio once connection is ready
+      player.play(resource);
+      
+      // Update user
+      interaction.editReply('🔄 Now playing the song...');
+    });
+    
     connection.on(VoiceConnectionStatus.Disconnected, async () => {
       try {
         console.log('Voice connection disconnected, attempting to reconnect...');
@@ -155,61 +188,22 @@ export async function execute(interaction) {
         console.log('Voice connection is reconnecting...');
       } catch (error) {
         console.log('Voice connection cannot reconnect, cleaning up...', error);
+        clearTimeout(connectionTimeout);
         connection.destroy();
         connections.delete(interaction.guildId);
         interaction.channel?.send('❌ Voice connection was lost and could not be reestablished.').catch(() => {});
       }
     });
-
-    // Check if we're connected
-    connection.on(VoiceConnectionStatus.Ready, () => {
-      console.log(`Voice connection ready in guild ${interaction.guildId}`);
-    });
-
+    
     connection.on('error', error => {
       console.error(`Voice connection error in guild ${interaction.guildId}:`, error);
+      clearTimeout(connectionTimeout);
       connection.destroy();
       connections.delete(interaction.guildId);
       interaction.channel?.send(`❌ Voice connection error: ${error.message}`).catch(() => {});
     });
-
-    // Create and configure audio player
-    const player = createAudioPlayer({
-      behaviors: {
-        noSubscriber: NoSubscriberBehavior.Pause,
-      },
-    });
-
-    // Update the user
-    await interaction.editReply('🔄 Preparing playback...');
-
-    // Await ready state with timeout
-    try {
-      await entersState(connection, VoiceConnectionStatus.Ready, 30_000); // Increased from 10 to 30 seconds
-    } catch (error) {
-      console.error('Voice connection timeout:', error);
-      connection.destroy();
-      throw new Error(`Failed to join the voice channel. Please make sure I have the right permissions and try again.`);
-    }
-
-    player.play(resource);
-    connection.subscribe(player);
-
-    // Track this connection
-    connections.set(interaction.guildId, { connection, player });
-
-    // Cleanup when finished or on error
-    player.on(AudioPlayerStatus.Idle, () => {
-      console.log(`Song finished in guild ${interaction.guildId}, cleaning up...`);
-      try {
-        connection.destroy();
-        connections.delete(interaction.guildId);
-        interaction.channel?.send('✅ Song playback completed.').catch(() => {});
-      } catch (error) {
-        console.error('Error during cleanup:', error);
-      }
-    });
-
+    
+    // Set up player error handling
     player.on('error', error => {
       console.error('Audio player error:', error);
       try {
@@ -220,8 +214,41 @@ export async function execute(interaction) {
         console.error('Error during player cleanup:', cleanupError);
       }
     });
-
-    // Build now-playing embed
+    
+    // Cleanup when finished
+    player.on(AudioPlayerStatus.Idle, () => {
+      console.log(`Song finished in guild ${interaction.guildId}, cleaning up...`);
+      try {
+        connection.destroy();
+        connections.delete(interaction.guildId);
+        interaction.channel?.send('✅ Song playback completed.').catch(() => {});
+      } catch (error) {
+        console.error('Error during cleanup:', error);
+      }
+    });
+    
+    // Subscribe player to connection
+    const subscription = connection.subscribe(player);
+    if (!subscription) {
+      clearTimeout(connectionTimeout);
+      connection.destroy();
+      throw new Error("Failed to subscribe audio player to voice connection");
+    }
+    
+    // Store the connection
+    connections.set(interaction.guildId, { connection, player });
+    
+    // Wait for connection to be ready
+    try {
+      await entersState(connection, VoiceConnectionStatus.Ready, 10_000);
+      clearTimeout(connectionTimeout);
+    } catch (error) {
+      // This is handled by the timeout already, but just in case
+      console.error("Failed to enter Ready state:", error);
+      // Don't throw here, let the timeout handle it
+    }
+    
+    // Build and send now-playing embed
     const embed = new EmbedBuilder()
       .setColor('#2ecc71')
       .setTitle('▶️ Now Playing')
@@ -233,13 +260,13 @@ export async function execute(interaction) {
       )
       .setFooter({ text: `Requested by ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
       .setTimestamp();
-
+    
     // Send public embed
     await interaction.editReply({ embeds: [embed], ephemeral: false });
-
+    
     // Log success
     console.log(`Now playing song in guild ${interaction.guildId}: ${details.title}`);
-
+  
   } catch (error) {
     console.error('Error in /song command:', error);
     // Attempt cleanup
