@@ -25,7 +25,7 @@ A modern Discord bot using Discord.js v14+ with slash commands for utility and e
 
 1. Clone this repository
 ```bash
-git clone https://github.com/yourusername/discord-bot.git
+git clone https://github.com/VeinDevTtv/discord-bot.git
 cd discord-bot
 ```
 
