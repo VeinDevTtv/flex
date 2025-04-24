@@ -1,4 +1,5 @@
 import { Events } from 'discord.js';
+import { checkCooldown } from '../utils/cooldownManager.js';
 
 export const name = Events.InteractionCreate;
 export const once = false;
@@ -12,6 +13,23 @@ export async function execute(interaction) {
 
   if (!command) {
     console.error(`No command matching ${interaction.commandName} was found.`);
+    return;
+  }
+
+  // Check cooldown
+  const cooldown = checkCooldown(
+    interaction.user.id,
+    interaction.commandName,
+    300000, // 5 minutes cooldown
+    2,      // Max 2 uses
+    10000   // Within 10 seconds
+  );
+
+  if (cooldown.onCooldown) {
+    await interaction.reply({ 
+      content: cooldown.message,
+      ephemeral: true 
+    });
     return;
   }
 
