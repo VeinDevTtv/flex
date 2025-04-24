@@ -71,12 +71,29 @@ export async function execute(interaction) {
     }
 
     // Prepare audio stream
-    const stream = await play.stream(url, { quality: 2 });
-    const resource = createAudioResource(stream.stream, {
-      inputType: stream.type,
-      inlineVolume: true
+    const stream = await play.stream(url, { 
+      quality: 2,
+      discordPlayerCompatibility: true // Add compatibility mode for Discord player
+    }).catch(error => {
+      console.error('Stream error:', error);
+      throw new Error('Failed to create audio stream. The video might be unavailable or restricted.');
     });
-    resource.volume?.setVolume(0.5); // Set default volume to 50%
+    
+    if (!stream || !stream.stream) {
+      throw new Error('Failed to get audio stream from the video');
+    }
+    
+    let resource;
+    try {
+      resource = createAudioResource(stream.stream, {
+        inputType: stream.type,
+        inlineVolume: true
+      });
+      resource.volume?.setVolume(0.5); // Set default volume to 50%
+    } catch (error) {
+      console.error('Error creating audio resource:', error);
+      throw new Error('Failed to process audio stream. Please try another video.');
+    }
 
     // Establish voice connection
     const connection = joinVoiceChannel({
@@ -101,6 +118,17 @@ export async function execute(interaction) {
       }
     });
 
+    // Check if we're connected
+    connection.on(VoiceConnectionStatus.Ready, () => {
+      console.log(`Voice connection ready in guild ${interaction.guildId}`);
+    });
+
+    connection.on('error', error => {
+      console.error(`Voice connection error in guild ${interaction.guildId}:`, error);
+      connection.destroy();
+      connections.delete(interaction.guildId);
+    });
+
     // Create and configure audio player
     const player = createAudioPlayer({
       behaviors: {
@@ -110,10 +138,11 @@ export async function execute(interaction) {
 
     // Await ready state with timeout
     try {
-      await entersState(connection, VoiceConnectionStatus.Ready, 10_000);
+      await entersState(connection, VoiceConnectionStatus.Ready, 30_000); // Increased from 10 to 30 seconds
     } catch (error) {
+      console.error('Voice connection timeout:', error);
       connection.destroy();
-      throw new Error('Failed to establish voice connection within 10 seconds');
+      throw new Error(`Failed to join the voice channel. Please make sure I have the right permissions and try again.`);
     }
 
     player.play(resource);
