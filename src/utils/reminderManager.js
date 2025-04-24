@@ -1,3 +1,5 @@
+import { reminderDb } from './database.js';
+
 // Store active reminders in memory
 const activeReminders = new Map();
 
@@ -36,17 +38,27 @@ export function parseTime(timeStr) {
  */
 export function createReminder(userId, message, delay, callback) {
   const reminderId = Date.now().toString();
+  const dueTime = Date.now() + delay;
   
-  const timeoutId = setTimeout(() => {
-    callback(userId, message);
-    activeReminders.delete(reminderId);
-  }, delay);
-  
-  activeReminders.set(reminderId, {
+  // Save to database
+  const reminder = {
+    id: reminderId,
     userId,
     message,
     timestamp: Date.now(),
-    dueTime: Date.now() + delay,
+    dueTime
+  };
+  reminderDb.save(reminder);
+  
+  // Set timeout
+  const timeoutId = setTimeout(() => {
+    callback(userId, message);
+    activeReminders.delete(reminderId);
+    reminderDb.delete(reminderId);
+  }, delay);
+  
+  activeReminders.set(reminderId, {
+    ...reminder,
     timeoutId
   });
   
@@ -67,6 +79,7 @@ export function cancelReminder(reminderId) {
   
   clearTimeout(reminder.timeoutId);
   activeReminders.delete(reminderId);
+  reminderDb.delete(reminderId);
   return true;
 }
 
@@ -76,16 +89,36 @@ export function cancelReminder(reminderId) {
  * @returns {Array} Array of active reminders
  */
 export function getUserReminders(userId) {
-  const reminders = [];
+  return reminderDb.getByUserId(userId);
+}
+
+/**
+ * Initialize reminders from database on bot start
+ * @param {Function} callback - Function to call when reminder is due
+ */
+export function initializeReminders(callback) {
+  const reminders = reminderDb.getAll();
+  const now = Date.now();
   
-  for (const [id, reminder] of activeReminders.entries()) {
-    if (reminder.userId === userId) {
-      reminders.push({
-        id,
-        ...reminder
+  for (const reminder of reminders) {
+    const timeUntilDue = reminder.dueTime - now;
+    
+    if (timeUntilDue <= 0) {
+      // Reminder is already due, trigger it immediately
+      callback(reminder.userId, reminder.message);
+      reminderDb.delete(reminder.id);
+    } else {
+      // Set timeout for future reminder
+      const timeoutId = setTimeout(() => {
+        callback(reminder.userId, reminder.message);
+        activeReminders.delete(reminder.id);
+        reminderDb.delete(reminder.id);
+      }, timeUntilDue);
+      
+      activeReminders.set(reminder.id, {
+        ...reminder,
+        timeoutId
       });
     }
   }
-  
-  return reminders;
 } 

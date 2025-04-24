@@ -18,13 +18,29 @@ export async function execute(interaction) {
   const message = interaction.options.getString('message');
   
   try {
+    // Check if user has DMs enabled
+    const user = await interaction.client.users.fetch(interaction.user.id);
+    try {
+      await user.send('Testing DM access...');
+    } catch (error) {
+      await interaction.reply({ 
+        content: '❌ I cannot send you DMs. Please enable DMs from server members in your privacy settings.',
+        ephemeral: true 
+      });
+      return;
+    }
+    
     // Parse time string into milliseconds
     const delay = parseTime(timeStr);
     
     // Create a callback function that will DM the user when the reminder is due
     const callback = async (userId, reminderMessage) => {
-      const user = await interaction.client.users.fetch(userId);
-      user.send(`⏰ **Reminder:** ${reminderMessage}`);
+      try {
+        const user = await interaction.client.users.fetch(userId);
+        await user.send(`⏰ **Reminder:** ${reminderMessage}`);
+      } catch (error) {
+        console.error(`Failed to send reminder to user ${userId}:`, error);
+      }
     };
     
     // Create reminder

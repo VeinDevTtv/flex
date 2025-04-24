@@ -3,6 +3,8 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import { initializeReminders } from './utils/reminderManager.js';
+import { scheduleDailyTasks } from './utils/database.js';
 
 dotenv.config();
 
@@ -15,6 +17,7 @@ const client = new Client({
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
+    GatewayIntentBits.DirectMessages
   ]
 });
 
@@ -56,6 +59,24 @@ for (const file of eventFiles) {
     client.on(event.name, (...args) => event.execute(...args));
   }
 }
+
+// Initialize reminders when bot starts
+client.once(Events.ClientReady, () => {
+  console.log(`Ready! Logged in as ${client.user.tag}`);
+  
+  // Initialize reminders
+  initializeReminders(async (userId, message) => {
+    try {
+      const user = await client.users.fetch(userId);
+      await user.send(`⏰ **Reminder:** ${message}`);
+    } catch (error) {
+      console.error(`Failed to send reminder to user ${userId}:`, error);
+    }
+  });
+  
+  // Schedule daily tasks
+  scheduleDailyTasks(client);
+});
 
 // Login to Discord
 client.login(process.env.TOKEN); 

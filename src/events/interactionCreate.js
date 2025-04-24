@@ -6,6 +6,8 @@ export const once = false;
 export async function execute(interaction) {
   if (!interaction.isChatInputCommand()) return;
 
+  console.log(`[SlashCommand] ${interaction.commandName} used by ${interaction.user.tag}`);
+
   const command = interaction.client.commands.get(interaction.commandName);
 
   if (!command) {
