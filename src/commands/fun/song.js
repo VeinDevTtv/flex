@@ -71,13 +71,23 @@ export async function execute(interaction) {
     }
 
     // Prepare audio stream
-    const stream = await play.stream(url, { 
-      quality: 2,
-      discordPlayerCompatibility: true // Add compatibility mode for Discord player
-    }).catch(error => {
-      console.error('Stream error:', error);
-      throw new Error('Failed to create audio stream. The video might be unavailable or restricted.');
-    });
+    let stream;
+    try {
+      stream = await play.stream(url, { 
+        quality: 2,
+        discordPlayerCompatibility: true // Add compatibility mode for Discord player
+      });
+    } catch (error) {
+      console.error('Stream error with discordPlayerCompatibility:', error);
+      // Fallback to basic stream without compatibility mode
+      try {
+        stream = await play.stream(url);
+        console.log('Using fallback streaming method');
+      } catch (fallbackError) {
+        console.error('Fallback stream error:', fallbackError);
+        throw new Error('Failed to create audio stream. The video might be unavailable or restricted.');
+      }
+    }
     
     if (!stream || !stream.stream) {
       throw new Error('Failed to get audio stream from the video');
@@ -188,6 +198,28 @@ export async function execute(interaction) {
       connection.destroy();
       connections.delete(interaction.guildId);
     }
-    return interaction.editReply(`❌ An error occurred: ${error.message}`);
+    
+    // Handle the response based on interaction state
+    try {
+      if (interaction.deferred) {
+        await interaction.editReply(`❌ An error occurred: ${error.message}`);
+      } else {
+        await interaction.reply({
+          content: `❌ An error occurred: ${error.message}`,
+          ephemeral: true
+        });
+      }
+    } catch (replyError) {
+      console.error('Error sending error response:', replyError);
+      // If we can't edit the reply, try following up instead
+      try {
+        await interaction.followUp({
+          content: `❌ An error occurred: ${error.message}`,
+          ephemeral: true
+        });
+      } catch (followUpError) {
+        console.error('Failed to send error message:', followUpError);
+      }
+    }
   }
 }
