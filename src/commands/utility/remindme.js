@@ -21,7 +21,7 @@ export async function execute(interaction) {
     // Check if user has DMs enabled
     const user = await interaction.client.users.fetch(interaction.user.id);
     try {
-      await user.send('Testing DM access...');
+      // await user.send('Testing DM access...');
     } catch (error) {
       await interaction.reply({ 
         content: '❌ I cannot send you DMs. Please enable DMs from server members in your privacy settings.',
