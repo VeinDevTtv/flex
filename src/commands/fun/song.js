@@ -5,7 +5,8 @@ import {
   createAudioResource,
   VoiceConnectionStatus,
   entersState,
-  AudioPlayerStatus
+  AudioPlayerStatus,
+  NoSubscriberBehavior
 } from '@discordjs/voice';
 import play from 'play-dl';
 
@@ -33,20 +34,30 @@ export async function execute(interaction) {
   // Permission checks
   const botMember = interaction.guild.members.me;
   const permissions = botMember.permissionsIn(userChannel);
-  if (!permissions.has(['CONNECT', 'SPEAK', 'DEAFEN_MEMBERS'])) {
-    return interaction.editReply('❌ I need permissions to connect, speak, and deafen in your channel.');
+  if (!permissions.has(['CONNECT', 'SPEAK'])) {
+    return interaction.editReply('❌ I need permissions to connect and speak in your channel.');
   }
 
   // Prevent multiple connections in the same guild
   if (connections.has(interaction.guildId)) {
-    return interaction.editReply('❌ Already playing music in a voice channel. Please wait until the current track ends.');
+    const existing = connections.get(interaction.guildId);
+    if (existing.connection.state.status !== VoiceConnectionStatus.Destroyed) {
+      return interaction.editReply('❌ Already playing music in a voice channel. Please wait until the current track ends.');
+    }
+    // Clean up destroyed connection
+    connections.delete(interaction.guildId);
   }
 
   const url = interaction.options.getString('url');
   // Validate YouTube URL and type
-  const validation = play.yt_validate(url);
-  if (validation !== 'video') {
-    return interaction.editReply('❌ Please provide a valid YouTube **video** URL!');
+  try {
+    const validation = play.yt_validate(url);
+    if (validation !== 'video') {
+      return interaction.editReply('❌ Please provide a valid YouTube **video** URL!');
+    }
+  } catch (error) {
+    console.error('URL validation error:', error);
+    return interaction.editReply('❌ Failed to validate the YouTube URL. Please make sure it\'s correct.');
   }
 
   try {
@@ -54,9 +65,18 @@ export async function execute(interaction) {
     const info = await play.video_basic_info(url);
     const { video_details: details } = info;
 
+    // Check video duration (optional: limit to reasonable length)
+    if (details.durationInSec > 3600) { // 1 hour limit
+      return interaction.editReply('❌ Video is too long! Please choose a video under 1 hour.');
+    }
+
     // Prepare audio stream
     const stream = await play.stream(url, { quality: 2 });
-    const resource = createAudioResource(stream.stream, { inputType: stream.type });
+    const resource = createAudioResource(stream.stream, {
+      inputType: stream.type,
+      inlineVolume: true
+    });
+    resource.volume?.setVolume(0.5); // Set default volume to 50%
 
     // Establish voice connection
     const connection = joinVoiceChannel({
@@ -65,11 +85,37 @@ export async function execute(interaction) {
       adapterCreator: interaction.guild.voiceAdapterCreator,
       selfDeaf: true
     });
-    // Await ready state
-    await entersState(connection, VoiceConnectionStatus.Ready, 10_000);
 
-    // Create and subscribe audio player
-    const player = createAudioPlayer();
+    // Monitor connection state
+    connection.on(VoiceConnectionStatus.Disconnected, async () => {
+      try {
+        await Promise.race([
+          entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
+          entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
+        ]);
+        // Seems to be reconnecting to a new channel
+      } catch (error) {
+        // Seems to be a real disconnection
+        connection.destroy();
+        connections.delete(interaction.guildId);
+      }
+    });
+
+    // Create and configure audio player
+    const player = createAudioPlayer({
+      behaviors: {
+        noSubscriber: NoSubscriberBehavior.Pause,
+      },
+    });
+
+    // Await ready state with timeout
+    try {
+      await entersState(connection, VoiceConnectionStatus.Ready, 10_000);
+    } catch (error) {
+      connection.destroy();
+      throw new Error('Failed to establish voice connection within 10 seconds');
+    }
+
     player.play(resource);
     connection.subscribe(player);
 
@@ -81,10 +127,12 @@ export async function execute(interaction) {
       connection.destroy();
       connections.delete(interaction.guildId);
     });
+
     player.on('error', error => {
       console.error('Audio player error:', error);
       connection.destroy();
       connections.delete(interaction.guildId);
+      interaction.channel?.send(`❌ An error occurred while playing: ${error.message}`).catch(() => {});
     });
 
     // Build now-playing embed
@@ -111,6 +159,6 @@ export async function execute(interaction) {
       connection.destroy();
       connections.delete(interaction.guildId);
     }
-    return interaction.editReply('❌ An error occurred while trying to play the song.');
+    return interaction.editReply(`❌ An error occurred: ${error.message}`);
   }
 }
