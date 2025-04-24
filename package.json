@@ -26,7 +26,8 @@
     "node-cron": "^3.0.3",
     "node-fetch": "^2.6.7",
     "opusscript": "^0.0.8",
-    "play-dl": "^1.9.7"
+    "play-dl": "^1.9.7",
+    "ytdl-core": "^4.11.5"
   },
   "devDependencies": {
     "nodemon": "^3.0.1"
