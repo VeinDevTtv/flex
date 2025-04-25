@@ -1,0 +1,252 @@
+import { 
+  createAudioPlayer, 
+  createAudioResource, 
+  joinVoiceChannel, 
+  AudioPlayerStatus, 
+  VoiceConnectionStatus,
+  entersState,
+  getVoiceConnection
+} from '@discordjs/voice';
+import play from 'play-dl';
+import ytdl from 'ytdl-core';
+
+// Store guild queues globally
+const queues = new Map();
+
+/**
+ * Get or create a music queue for a guild
+ * @param {string} guildId - The guild ID
+ * @returns {Object} The guild queue object
+ */
+function getQueue(guildId) {
+  if (!queues.has(guildId)) {
+    queues.set(guildId, {
+      songs: [],
+      currentSong: null,
+      player: createAudioPlayer(),
+      textChannel: null,
+      connection: null,
+      playing: false
+    });
+  }
+  return queues.get(guildId);
+}
+
+/**
+ * Join a voice channel
+ * @param {Object} interaction - The Discord interaction
+ * @returns {Promise<Object>} The voice connection or null if failed
+ */
+async function joinVoiceChannelForUser(interaction) {
+  const voiceChannel = interaction.member.voice.channel;
+  
+  if (!voiceChannel) {
+    await interaction.reply({ 
+      content: '❌ You need to be in a voice channel to use this command!', 
+      ephemeral: true 
+    });
+    return null;
+  }
+  
+  try {
+    const connection = joinVoiceChannel({
+      channelId: voiceChannel.id,
+      guildId: interaction.guild.id,
+      adapterCreator: interaction.guild.voiceAdapterCreator,
+    });
+    
+    // Try to connect and wait for it to be ready
+    await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
+    return connection;
+  } catch (error) {
+    console.error('Error connecting to voice channel:', error);
+    await interaction.followUp({
+      content: '❌ Error connecting to voice channel!',
+      ephemeral: true
+    });
+    return null;
+  }
+}
+
+/**
+ * Add a song to the queue
+ * @param {Object} interaction - The Discord interaction
+ * @param {Object} song - The song to add
+ * @param {boolean} playSong - Whether to start playing the song
+ */
+async function addSong(interaction, song, playSong = false) {
+  const queue = getQueue(interaction.guild.id);
+  
+  // Store the text channel to send notifications
+  if (!queue.textChannel) {
+    queue.textChannel = interaction.channel;
+  }
+  
+  // Add the song to the queue
+  queue.songs.push(song);
+  
+  if (playSong && (!queue.playing || queue.songs.length === 1)) {
+    queue.playing = true;
+    return playNextSong(interaction.guild.id);
+  }
+  
+  return queue;
+}
+
+/**
+ * Play the next song in the queue
+ * @param {string} guildId - The guild ID
+ */
+async function playNextSong(guildId) {
+  const queue = getQueue(guildId);
+  
+  if (queue.songs.length === 0) {
+    queue.playing = false;
+    queue.currentSong = null;
+    
+    if (queue.textChannel) {
+      queue.textChannel.send('✅ Queue finished! Use `/play` to add more songs.');
+    }
+    
+    // Disconnect after 30 seconds of inactivity
+    setTimeout(() => {
+      const connection = getVoiceConnection(guildId);
+      if (connection && !queue.playing) {
+        connection.destroy();
+        
+        if (queue.textChannel) {
+          queue.textChannel.send('👋 Disconnected due to inactivity.');
+        }
+      }
+    }, 30000);
+    
+    return;
+  }
+  
+  // Get the next song
+  const song = queue.songs.shift();
+  queue.currentSong = song;
+  
+  try {
+    // Create a resource from the stream
+    let stream;
+    let resource;
+    
+    // Check if URL is YouTube, use play-dl for better performance
+    if (ytdl.validateURL(song.url)) {
+      const source = await play.stream(song.url);
+      resource = createAudioResource(source.stream, {
+        inputType: source.type
+      });
+    } else {
+      // Fallback if not a YouTube URL
+      stream = ytdl(song.url, { 
+        filter: 'audioonly', 
+        quality: 'highestaudio',
+        highWaterMark: 1 << 25 // 32MB buffer
+      });
+      resource = createAudioResource(stream);
+    }
+    
+    // Set up the audio player
+    queue.player.play(resource);
+    
+    // Set up event listeners
+    queue.player.on(AudioPlayerStatus.Idle, () => {
+      playNextSong(guildId);
+    });
+    
+    queue.player.on('error', error => {
+      console.error('Error playing song:', error);
+      if (queue.textChannel) {
+        queue.textChannel.send(`❌ Error playing song: ${error.message}`);
+      }
+      playNextSong(guildId);
+    });
+    
+    // Ensure the connection is subscribed to the player
+    if (!queue.connection) {
+      queue.connection = getVoiceConnection(guildId);
+    }
+    
+    queue.connection.subscribe(queue.player);
+    
+    // Notify that the song is playing
+    if (queue.textChannel) {
+      queue.textChannel.send(`🎵 Now playing: **${song.title}**`);
+    }
+  } catch (error) {
+    console.error('Error playing song:', error);
+    if (queue.textChannel) {
+      queue.textChannel.send(`❌ Error playing song: ${error.message}`);
+    }
+    
+    // Try to play the next song
+    playNextSong(guildId);
+  }
+}
+
+/**
+ * Skip the current song
+ * @param {string} guildId - The guild ID
+ * @returns {boolean} Whether the skip was successful
+ */
+function skipSong(guildId) {
+  const queue = getQueue(guildId);
+  
+  if (!queue.playing || !queue.currentSong) {
+    return false;
+  }
+  
+  // Stop the current song, triggering the 'finish' event
+  queue.player.stop();
+  return true;
+}
+
+/**
+ * Stop playing and clear the queue
+ * @param {string} guildId - The guild ID
+ * @returns {boolean} Whether the stop was successful
+ */
+function stopPlaying(guildId) {
+  const queue = getQueue(guildId);
+  const connection = getVoiceConnection(guildId);
+  
+  if (!connection) {
+    return false;
+  }
+  
+  // Clear the queue and stop playing
+  queue.songs = [];
+  queue.playing = false;
+  queue.currentSong = null;
+  queue.player.stop();
+  connection.destroy();
+  
+  return true;
+}
+
+/**
+ * Get current queue information
+ * @param {string} guildId - The guild ID
+ * @returns {Object} The queue information
+ */
+function getQueueInfo(guildId) {
+  const queue = getQueue(guildId);
+  
+  return {
+    currentSong: queue.currentSong,
+    songs: queue.songs,
+    isPlaying: queue.playing
+  };
+}
+
+export {
+  getQueue,
+  joinVoiceChannelForUser,
+  addSong,
+  playNextSong,
+  skipSong,
+  stopPlaying,
+  getQueueInfo
+}; 
