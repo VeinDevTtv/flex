@@ -34,13 +34,14 @@ Make sure you have the following installed:
 
 ## Available Commands
 
-### `/play <url>`
-Play a song from YouTube.
-- Required parameter: `url` - A valid YouTube URL to play
+### `/play <input>`
+Play a song from YouTube - now works with both direct URLs and search terms!
+- Required parameter: `input` - Either a YouTube URL or search keywords
 
 ### `/search <query>`
-Search for a song on YouTube and select from results.
+Search for a song on YouTube and select from interactive results.
 - Required parameter: `query` - Keywords to search for
+- Features interactive buttons to select from multiple search results
 
 ### `/skip`
 Skip the currently playing song.
@@ -74,6 +75,7 @@ If you encounter issues with audio playback:
    - **Playback errors with YouTube links**: 
      - Try using the `/search` command instead of direct links
      - Some YouTube videos may have restrictions that prevent bots from playing them
+     - Use artist name and song title instead of URLs for better results
 
    - **"Cannot find module" errors**:
      - Run `npm install` to ensure all dependencies are installed

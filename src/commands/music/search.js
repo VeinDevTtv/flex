@@ -38,11 +38,11 @@ export async function execute(interaction) {
       });
     });
     
-    // Create buttons for selection
-    const row = new ActionRowBuilder();
+    // Create buttons for selection - First row for selection buttons (1-4)
+    const selectionRow = new ActionRowBuilder();
     
-    for (let i = 0; i < searchResults.length; i++) {
-      row.addComponents(
+    for (let i = 0; i < Math.min(4, searchResults.length); i++) {
+      selectionRow.addComponents(
         new ButtonBuilder()
           .setCustomId(`search_${i}`)
           .setLabel(`${i + 1}`)
@@ -50,18 +50,37 @@ export async function execute(interaction) {
       );
     }
     
-    // Add a cancel button
-    row.addComponents(
+    // Create a second row for the fifth button (if it exists) and cancel button
+    const cancelRow = new ActionRowBuilder();
+    
+    // Add fifth button if needed
+    if (searchResults.length >= 5) {
+      cancelRow.addComponents(
+        new ButtonBuilder()
+          .setCustomId(`search_4`)
+          .setLabel(`5`)
+          .setStyle(ButtonStyle.Primary)
+      );
+    }
+    
+    // Add cancel button
+    cancelRow.addComponents(
       new ButtonBuilder()
         .setCustomId('search_cancel')
         .setLabel('Cancel')
         .setStyle(ButtonStyle.Danger)
     );
     
+    // Create array of component rows
+    const components = [selectionRow];
+    if (cancelRow.components.length > 0) {
+      components.push(cancelRow);
+    }
+    
     // Send the message with the embed and buttons
     const response = await interaction.followUp({
       embeds: [embed],
-      components: [row]
+      components: components
     });
     
     // Create a filter for the collector

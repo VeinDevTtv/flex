@@ -6,35 +6,50 @@ export const data = new SlashCommandBuilder()
   .setName('play')
   .setDescription('Play a song from YouTube')
   .addStringOption(option =>
-    option.setName('url')
-      .setDescription('The URL of the song to play (YouTube)')
+    option.setName('input')
+      .setDescription('YouTube URL or search keywords')
       .setRequired(true));
 
 export async function execute(interaction) {
   await interaction.deferReply();
   
-  const url = interaction.options.getString('url');
-  
-  // Validate URL
-  if (!play.yt_validate(url)) {
-    return interaction.followUp('❌ Please provide a valid YouTube URL.');
-  }
-  
-  // Get the voice connection
-  const connection = await joinVoiceChannelForUser(interaction);
-  if (!connection) return;
+  const input = interaction.options.getString('input');
   
   try {
-    // Get song info using play-dl
-    const songInfo = await play.video_info(url);
+    // Check if input is a valid YouTube URL
+    const isUrl = play.yt_validate(input);
+    let videoInfo;
     
-    if (!songInfo) {
-      return interaction.followUp('❌ Could not get information for this video.');
+    if (isUrl) {
+      // Handle URL input
+      videoInfo = await play.video_info(input);
+      
+      if (!videoInfo) {
+        return interaction.followUp('❌ Could not get information for this video.');
+      }
+    } else {
+      // Handle search terms
+      await interaction.followUp('🔍 Searching for: ' + input);
+      
+      // Search for the video
+      const searchResults = await play.search(input, { limit: 1 });
+      
+      if (!searchResults || searchResults.length === 0) {
+        return interaction.followUp('❌ No results found for your search query.');
+      }
+      
+      // Get the first result
+      videoInfo = await play.video_info(searchResults[0].url);
     }
     
+    // Get voice connection
+    const connection = await joinVoiceChannelForUser(interaction);
+    if (!connection) return;
+    
+    // Create song object
     const song = {
-      title: songInfo.video_details.title,
-      url: songInfo.video_details.url
+      title: videoInfo.video_details.title,
+      url: videoInfo.video_details.url
     };
     
     // Add song to queue and start playing if it's the first song

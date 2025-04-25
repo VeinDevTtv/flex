@@ -128,29 +128,61 @@ async function playNextSong(guildId) {
   queue.currentSong = song;
   
   try {
-    // Use only play-dl for better reliability
-    const { stream, type } = await play.stream(song.url, { 
+    if (queue.textChannel) {
+      queue.textChannel.send(`⏳ Preparing to play: **${song.title}**`);
+    }
+    
+    // Use only play-dl with proper error handling
+    const stream_data = await play.stream(song.url, {
       discordPlayerCompatibility: true,
-      quality: 2  // Use high quality
+      quality: 2, // high quality
+      seek: 0,
+      cheapSkip: false,
+      highWaterMark: 1024 * 1024 * 10 // 10MB buffer
+    }).catch(error => {
+      console.error('Error streaming song:', error);
+      if (queue.textChannel) {
+        queue.textChannel.send(`❌ Error streaming: ${error.message}`);
+      }
+      return null;
     });
     
-    if (!stream) {
-      throw new Error('Could not create stream');
+    // If we couldn't get stream data, skip to next song
+    if (!stream_data) {
+      console.error('Failed to get stream data, skipping song');
+      return playNextSong(guildId);
     }
     
-    const resource = createAudioResource(stream, {
-      inputType: type,
-      inlineVolume: true
+    const resource = createAudioResource(stream_data.stream, {
+      inputType: stream_data.type,
+      inlineVolume: true,
+      metadata: {
+        title: song.title,
+        url: song.url
+      }
     });
     
+    // Set volume to 50%
     if (resource.volume) {
-      resource.volume.setVolume(0.5);  // Set volume to 50%
+      resource.volume.setVolume(0.5);
     }
     
-    // Set up the audio player
-    queue.player.play(resource);
+    // Get or create connection
+    if (!queue.connection) {
+      queue.connection = getVoiceConnection(guildId);
+      if (!queue.connection) {
+        if (queue.textChannel) {
+          queue.textChannel.send(`❌ Voice connection lost. Please use the command again.`);
+        }
+        queue.playing = false;
+        return;
+      }
+    }
     
-    // Set up event listeners
+    // Remove previous listeners to avoid duplicates
+    queue.player.removeAllListeners();
+    
+    // Add new event listeners
     queue.player.on(AudioPlayerStatus.Idle, () => {
       playNextSong(guildId);
     });
@@ -163,11 +195,23 @@ async function playNextSong(guildId) {
       playNextSong(guildId);
     });
     
-    // Ensure the connection is subscribed to the player
-    if (!queue.connection) {
-      queue.connection = getVoiceConnection(guildId);
-    }
+    // Update connection status if necessary
+    queue.connection.on(VoiceConnectionStatus.Disconnected, async () => {
+      try {
+        await Promise.race([
+          entersState(queue.connection, VoiceConnectionStatus.Signalling, 5_000),
+          entersState(queue.connection, VoiceConnectionStatus.Connecting, 5_000),
+        ]);
+        // Seems to be reconnecting to a new channel - ignore disconnect
+      } catch (error) {
+        // Seems to be a real disconnect which SHOULDN'T be recovered from
+        queue.connection.destroy();
+        queue.playing = false;
+      }
+    });
     
+    // Play the song
+    queue.player.play(resource);
     queue.connection.subscribe(queue.player);
     
     // Notify that the song is playing
