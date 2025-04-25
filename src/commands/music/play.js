@@ -1,6 +1,5 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { joinVoiceChannelForUser, addSong } from '../../utils/musicPlayer.js';
-import ytdl from 'ytdl-core';
 import play from 'play-dl';
 
 export const data = new SlashCommandBuilder()
@@ -17,7 +16,7 @@ export async function execute(interaction) {
   const url = interaction.options.getString('url');
   
   // Validate URL
-  if (!ytdl.validateURL(url)) {
+  if (!play.yt_validate(url)) {
     return interaction.followUp('❌ Please provide a valid YouTube URL.');
   }
   
@@ -26,31 +25,16 @@ export async function execute(interaction) {
   if (!connection) return;
   
   try {
-    // Get song info
-    let songInfo;
+    // Get song info using play-dl
+    const songInfo = await play.video_info(url);
     
-    try {
-      songInfo = await ytdl.getInfo(url);
-    } catch (error) {
-      console.error('Error getting song info with ytdl:', error);
-      
-      // Try with play-dl as a fallback
-      const songData = await play.video_info(url);
-      if (!songData) {
-        return interaction.followUp('❌ Error getting song information.');
-      }
-      
-      songInfo = {
-        videoDetails: {
-          title: songData.video_details.title,
-          video_url: songData.video_details.url
-        }
-      };
+    if (!songInfo) {
+      return interaction.followUp('❌ Could not get information for this video.');
     }
     
     const song = {
-      title: songInfo.videoDetails.title,
-      url: songInfo.videoDetails.video_url
+      title: songInfo.video_details.title,
+      url: songInfo.video_details.url
     };
     
     // Add song to queue and start playing if it's the first song

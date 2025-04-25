@@ -38,6 +38,10 @@ Make sure you have the following installed:
 Play a song from YouTube.
 - Required parameter: `url` - A valid YouTube URL to play
 
+### `/search <query>`
+Search for a song on YouTube and select from results.
+- Required parameter: `query` - Keywords to search for
+
 ### `/skip`
 Skip the currently playing song.
 
@@ -52,15 +56,36 @@ View the current song queue.
 If you encounter issues with audio playback:
 
 1. Ensure FFMPEG is installed correctly on your system.
+   - Windows: Install using [this installer](https://www.gyan.dev/ffmpeg/builds/) and add to PATH
+   - Linux: `sudo apt-get install ffmpeg`
+   - macOS: `brew install ffmpeg`
+
 2. Make sure your bot has the necessary permissions in Discord:
    - Connect
    - Speak
    - Use Voice Activity
    
-3. Common errors:
-   - **Can't connect to voice channel**: Check your bot's permissions.
-   - **No audio output**: Ensure FFMPEG is installed correctly.
-   - **Playback errors**: Ensure you're using valid YouTube URLs.
+3. Common errors and solutions:
+   - **No audio output**: 
+     - Make sure FFMPEG is installed correctly
+     - Try restarting the bot
+     - Check if your voice channel allows bot connections
+   
+   - **Playback errors with YouTube links**: 
+     - Try using the `/search` command instead of direct links
+     - Some YouTube videos may have restrictions that prevent bots from playing them
+
+   - **"Cannot find module" errors**:
+     - Run `npm install` to ensure all dependencies are installed
+     - Particularly check: @discordjs/opus, play-dl, @discordjs/voice
+
+## Important Dependencies
+
+These are the key packages that power the music functionality:
+- `@discordjs/voice`: Handles voice connections
+- `play-dl`: Handles fetching and streaming from YouTube
+- `@discordjs/opus`: Provides Opus encoding required for voice
+- `ffmpeg-static`: Provides FFmpeg for processing audio
 
 ## Permissions
 

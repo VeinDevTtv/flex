@@ -128,24 +128,23 @@ async function playNextSong(guildId) {
   queue.currentSong = song;
   
   try {
-    // Create a resource from the stream
-    let stream;
-    let resource;
+    // Use only play-dl for better reliability
+    const { stream, type } = await play.stream(song.url, { 
+      discordPlayerCompatibility: true,
+      quality: 2  // Use high quality
+    });
     
-    // Check if URL is YouTube, use play-dl for better performance
-    if (ytdl.validateURL(song.url)) {
-      const source = await play.stream(song.url);
-      resource = createAudioResource(source.stream, {
-        inputType: source.type
-      });
-    } else {
-      // Fallback if not a YouTube URL
-      stream = ytdl(song.url, { 
-        filter: 'audioonly', 
-        quality: 'highestaudio',
-        highWaterMark: 1 << 25 // 32MB buffer
-      });
-      resource = createAudioResource(stream);
+    if (!stream) {
+      throw new Error('Could not create stream');
+    }
+    
+    const resource = createAudioResource(stream, {
+      inputType: type,
+      inlineVolume: true
+    });
+    
+    if (resource.volume) {
+      resource.volume.setVolume(0.5);  // Set volume to 50%
     }
     
     // Set up the audio player
