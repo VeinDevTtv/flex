@@ -52,34 +52,55 @@ Stop playing music and clear the queue.
 ### `/queue`
 View the current song queue.
 
-## Troubleshooting
+## Troubleshooting Audio Playback
 
-If you encounter issues with audio playback:
+If you're not hearing any audio, try these steps:
 
-1. Ensure FFMPEG is installed correctly on your system.
-   - Windows: Install using [this installer](https://www.gyan.dev/ffmpeg/builds/) and add to PATH
-   - Linux: `sudo apt-get install ffmpeg`
-   - macOS: `brew install ffmpeg`
+### For Windows Users:
 
-2. Make sure your bot has the necessary permissions in Discord:
-   - Connect
-   - Speak
-   - Use Voice Activity
-   
-3. Common errors and solutions:
-   - **No audio output**: 
-     - Make sure FFMPEG is installed correctly
-     - Try restarting the bot
-     - Check if your voice channel allows bot connections
-   
-   - **Playback errors with YouTube links**: 
-     - Try using the `/search` command instead of direct links
-     - Some YouTube videos may have restrictions that prevent bots from playing them
-     - Use artist name and song title instead of URLs for better results
+1. **Install FFmpeg properly**:
+   - Download FFmpeg from: https://www.gyan.dev/ffmpeg/builds/
+   - Download the "ffmpeg-release-essentials.zip" file
+   - Extract the ZIP file
+   - Add the bin folder to your system PATH
 
-   - **"Cannot find module" errors**:
-     - Run `npm install` to ensure all dependencies are installed
-     - Particularly check: @discordjs/opus, play-dl, @discordjs/voice
+2. **Install required voice dependencies**:
+   ```
+   npm install @discordjs/opus@0.9.0 libsodium-wrappers@0.7.13 opusscript@0.0.8 ffmpeg-static play-dl@1.9.7 --save
+   ```
+
+3. **Install Visual C++ Build Tools**:
+   - Download from: https://visualstudio.microsoft.com/visual-cpp-build-tools/
+   - Install the "Desktop development with C++" workload
+
+4. **Set Visual Studio Version**:
+   ```
+   npm config set msvs_version 2019
+   ```
+
+5. **Verify Discord permissions**:
+   - Make sure your bot has "Connect" and "Speak" permissions in the voice channel
+   - Check that you haven't muted the bot in Discord
+
+### For All Users:
+
+1. **Check your audio device**:
+   - Make sure your output device is set correctly in Discord
+   - Try adjusting the volume in Discord settings
+
+2. **Restart the bot**:
+   - Stop the bot (Ctrl+C in the terminal)
+   - Run `npm start` again
+
+3. **Reinstall voice dependencies**:
+   ```
+   npm install @discordjs/voice@0.16.0 @discordjs/opus libsodium-wrappers --save
+   ```
+
+4. **Use different music sources**:
+   - Try different YouTube links
+   - Use search terms instead of direct URLs
+   - Use more popular songs that are less likely to have restrictions
 
 ## Important Dependencies
 

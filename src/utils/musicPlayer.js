@@ -132,42 +132,7 @@ async function playNextSong(guildId) {
       queue.textChannel.send(`⏳ Preparing to play: **${song.title}**`);
     }
     
-    // Use only play-dl with proper error handling
-    const stream_data = await play.stream(song.url, {
-      discordPlayerCompatibility: true,
-      quality: 2, // high quality
-      seek: 0,
-      cheapSkip: false,
-      highWaterMark: 1024 * 1024 * 10 // 10MB buffer
-    }).catch(error => {
-      console.error('Error streaming song:', error);
-      if (queue.textChannel) {
-        queue.textChannel.send(`❌ Error streaming: ${error.message}`);
-      }
-      return null;
-    });
-    
-    // If we couldn't get stream data, skip to next song
-    if (!stream_data) {
-      console.error('Failed to get stream data, skipping song');
-      return playNextSong(guildId);
-    }
-    
-    const resource = createAudioResource(stream_data.stream, {
-      inputType: stream_data.type,
-      inlineVolume: true,
-      metadata: {
-        title: song.title,
-        url: song.url
-      }
-    });
-    
-    // Set volume to 50%
-    if (resource.volume) {
-      resource.volume.setVolume(0.5);
-    }
-    
-    // Get or create connection
+    // Make sure we're connected to a voice channel
     if (!queue.connection) {
       queue.connection = getVoiceConnection(guildId);
       if (!queue.connection) {
@@ -179,11 +144,97 @@ async function playNextSong(guildId) {
       }
     }
     
+    console.log(`Attempting to stream: ${song.url}`);
+    
+    // Basic stream options
+    const ytdl_options = { 
+      quality: 'highestaudio',
+      filter: 'audioonly',
+      highWaterMark: 1024 * 1024 * 64, // 64MB buffer
+      dlChunkSize: 0, // Request the whole file at once
+      requestOptions: {
+        headers: {
+          // Add a user agent to avoid some restrictions
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        }
+      }
+    };
+    
+    // Stream using play-dl for better performance
+    let stream_data = await play.stream(song.url, {
+      discordPlayerCompatibility: true,
+      quality: 2, // high quality (0-2)
+      seek: 0,
+      opusEncoded: true, // Request opus encoding
+      ffmpegOptions: {
+        args: ['-reconnect', '1', '-reconnect_streamed', '1', '-reconnect_delay_max', '5']
+      }
+    }).catch(error => {
+      console.error('Error streaming song:', error);
+      if (queue.textChannel) {
+        queue.textChannel.send(`❌ Error streaming: ${error.message}`);
+      }
+      return null;
+    });
+    
+    // If we couldn't get stream data, try a fallback method
+    if (!stream_data) {
+      if (queue.textChannel) {
+        queue.textChannel.send(`⚠️ Trying fallback method...`);
+      }
+      
+      // Use an alternative streaming method as fallback
+      try {
+        const alt_stream = await play.stream(song.url, {
+          seek: 0,
+          quality: 1, // Try a different quality
+          discordPlayerCompatibility: true
+        });
+        
+        if (!alt_stream) {
+          throw new Error("Fallback streaming failed");
+        }
+        
+        stream_data = alt_stream;
+        console.log('Using fallback stream method');
+      } catch (fallbackError) {
+        console.error('Fallback streaming failed:', fallbackError);
+        return playNextSong(guildId); // Skip to next song
+      }
+    }
+    
+    if (queue.textChannel) {
+      queue.textChannel.send(`🔊 Creating audio resource...`);
+    }
+    
+    // Create audio resource from the stream
+    const resource = createAudioResource(stream_data.stream, {
+      inputType: stream_data.type,
+      inlineVolume: true,
+      metadata: {
+        title: song.title,
+        url: song.url
+      }
+    });
+    
+    // Set volume to 80%
+    if (resource.volume) {
+      resource.volume.setVolume(0.8);
+    }
+    
     // Remove previous listeners to avoid duplicates
     queue.player.removeAllListeners();
     
     // Add new event listeners
+    queue.player.on(AudioPlayerStatus.Playing, () => {
+      if (queue.textChannel) {
+        queue.textChannel.send(`▶️ Audio playback started!`);
+      }
+      console.log(`Now playing: ${song.title}`);
+    });
+    
     queue.player.on(AudioPlayerStatus.Idle, () => {
+      console.log(`Finished playing: ${song.title}`);
       playNextSong(guildId);
     });
     
@@ -212,11 +263,19 @@ async function playNextSong(guildId) {
     
     // Play the song
     queue.player.play(resource);
-    queue.connection.subscribe(queue.player);
     
-    // Notify that the song is playing
-    if (queue.textChannel) {
-      queue.textChannel.send(`🎵 Now playing: **${song.title}**`);
+    // Make sure we're subscribed to the player
+    const subscription = queue.connection.subscribe(queue.player);
+    if (subscription) {
+      if (queue.textChannel) {
+        queue.textChannel.send(`🎵 Now playing: **${song.title}**`);
+      }
+    } else {
+      if (queue.textChannel) {
+        queue.textChannel.send(`❌ Failed to subscribe to audio player!`);
+      }
+      queue.connection.destroy();
+      queue.playing = false;
     }
   } catch (error) {
     console.error('Error playing song:', error);
