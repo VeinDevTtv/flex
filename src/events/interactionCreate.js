@@ -28,10 +28,14 @@ export async function execute(interaction) {
 
   if (cooldown.onCooldown) {
     console.log(`[Cooldown] User ${interaction.user.tag} is on cooldown for ${interaction.commandName}`);
-    await interaction.reply({ 
-      content: cooldown.message,
-      ephemeral: true 
-    });
+    try {
+      await interaction.reply({ 
+        content: cooldown.message,
+        ephemeral: true 
+      });
+    } catch (cooldownError) {
+      console.error('[Cooldown Error] Failed to reply with cooldown message:', cooldownError);
+    }
     return;
   }
 
@@ -42,18 +46,27 @@ export async function execute(interaction) {
   } catch (error) {
     console.error(`[Error] Error executing ${interaction.commandName}:`, error);
     
-    // If the interaction was already replied to, follow up with an error message
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ 
-        content: 'There was an error while executing this command!', 
-        ephemeral: true 
-      });
-    } else {
-      // Otherwise reply with an error message
-      await interaction.reply({ 
-        content: 'There was an error while executing this command!', 
-        ephemeral: true 
-      });
+    try {
+      // If the interaction was already replied to or deferred, follow up with an error message
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({ 
+          content: 'There was an error while executing this command!', 
+          ephemeral: true 
+        }).catch(followupError => {
+          console.error('[Error Handling] Failed to send followup message:', followupError);
+        });
+      } else {
+        // Otherwise reply with an error message
+        await interaction.reply({ 
+          content: 'There was an error while executing this command!', 
+          ephemeral: true 
+        }).catch(replyError => {
+          console.error('[Error Handling] Failed to send reply message:', replyError);
+        });
+      }
+    } catch (errorHandlingError) {
+      // Last resort error handling to prevent crashing
+      console.error('[Critical] Failed to handle command error properly:', errorHandlingError);
     }
   }
 } 

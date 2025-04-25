@@ -10,13 +10,15 @@ export const data = new SlashCommandBuilder()
       .setRequired(true));
 
 export async function execute(interaction) {
+  // Defer reply immediately to prevent timeout
+  await interaction.deferReply({ ephemeral: true });
+  
   const confession = interaction.options.getString('confession');
   const settings = settingsDb.getGuildSettings(interaction.guildId);
   
   if (!settings.confessionChannel) {
-    await interaction.reply({ 
-      content: '❌ No confession channel has been set up for this server. Ask an admin to set one up!',
-      ephemeral: true 
+    await interaction.editReply({ 
+      content: '❌ No confession channel has been set up for this server. Ask an admin to set one up!'
     });
     return;
   }
@@ -25,9 +27,8 @@ export async function execute(interaction) {
     const channel = await interaction.guild.channels.fetch(settings.confessionChannel);
     
     if (!channel) {
-      await interaction.reply({ 
-        content: '❌ The confession channel no longer exists. Please contact an admin.',
-        ephemeral: true 
+      await interaction.editReply({ 
+        content: '❌ The confession channel no longer exists. Please contact an admin.'
       });
       return;
     }
@@ -44,15 +45,13 @@ export async function execute(interaction) {
     await channel.send({ embeds: [embed] });
     
     // Confirm to user
-    await interaction.reply({ 
-      content: '✅ Your confession has been sent anonymously!',
-      ephemeral: true 
+    await interaction.editReply({ 
+      content: '✅ Your confession has been sent anonymously!'
     });
   } catch (error) {
     console.error('Error sending confession:', error);
-    await interaction.reply({ 
-      content: '❌ There was an error sending your confession. Please try again later.',
-      ephemeral: true 
+    await interaction.editReply({ 
+      content: '❌ There was an error sending your confession. Please try again later.'
     });
   }
 } 
