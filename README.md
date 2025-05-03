@@ -65,7 +65,7 @@ Three subcommands for managing memorable quotes:
 
 1. Clone this repository
 ```bash
-git clone https://github.com/yourusername/discord-bot.git
+git clone https://github.com/VeinDevTtv/discord-bot.git
 cd discord-bot
 ```
 
